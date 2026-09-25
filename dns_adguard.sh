@@ -45,7 +45,6 @@ dns_adguard_rm() {
   _current_rules=$(_adguard_get_rules)
   
   # Nur die spezifische Zeile dieser Domain/Challenge herausfiltern
-  # Andere aktive Challenges (von weiteren SAN-Domains) bleiben erhalten!
   _payload=$(echo "$_current_rules" | grep -F -v "$_rule")
 
   _adguard_save_rules "$_payload"
@@ -82,7 +81,8 @@ _adguard_init() {
 }
 
 _adguard_get_rules() {
-  _res=$(_with_retry _get "$ADGUARD_URL/control/filtering/status" "" "$_adguard_headers")
+  # Direkter _get Aufruf statt des fehlerhaften _with_retry
+  _res=$(_get "$ADGUARD_URL/control/filtering/status" "" "$_adguard_headers")
   if [ $? -ne 0 ] || [ -z "$_res" ]; then
      _err "Fehler beim Abrufen der Filterregeln von AdGuard."
      return 1
