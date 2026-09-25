@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # File: dns_adguard.sh
-# Author: Custom AdGuard Home DNS-01 Hook for acme.sh (SAN / Multi-Domain Ready)
+# Author: Custom AdGuard Home DNS-01 Hook for acme.sh (Timeout & SAN Fixed)
 
 dns_adguard_add() {
   fulldomain=$1
@@ -15,8 +15,9 @@ dns_adguard_add() {
 
   # Aktuelle Regeln holen
   _current_rules=$(_adguard_get_rules)
+  [ $? -ne 0 ] && return 1
   
-  # Prüfen, ob die exakte Regel schon existiert (Verhindert Duplikate bei SANs)
+  # Prüfen, ob die exakte Regel schon existiert
   if echo "$_current_rules" | grep -F -q "$_rule"; then
     _info "Regel existiert bereits in AdGuard. Überspringe Hinzufügen."
     return 0
@@ -43,6 +44,7 @@ dns_adguard_rm() {
   
   # Aktuelle Regeln holen
   _current_rules=$(_adguard_get_rules)
+  [ $? -ne 0 ] && return 1
   
   # Nur die spezifische Zeile dieser Domain/Challenge herausfiltern
   _payload=$(echo "$_current_rules" | grep -F -v "$_rule")
@@ -55,6 +57,14 @@ dns_adguard_rm() {
 ######################################################################
 
 _adguard_init() {
+  # Standard-Timeouts für acme.sh HTTP-Funktionen setzen, um curl-Fehler zu vermeiden
+  if [ -z "$HTTP_CONNECT_TIMEOUT" ]; then
+    HTTP_CONNECT_TIMEOUT=20
+  fi
+  if [ -z "$HTTP_TIMEOUT" ]; then
+    HTTP_TIMEOUT=30
+  fi
+
   if [ -n "$ADGUARD_AUTH" ]; then
     _saveaccountconf ADGUARD_AUTH "$ADGUARD_AUTH"
   else
@@ -81,13 +91,15 @@ _adguard_init() {
 }
 
 _adguard_get_rules() {
-  # Direkter _get Aufruf statt des fehlerhaften _with_retry
+  # API-Abruf mit direkter Übergabe an _get
   _res=$(_get "$ADGUARD_URL/control/filtering/status" "" "$_adguard_headers")
+  
   if [ $? -ne 0 ] || [ -z "$_res" ]; then
-     _err "Fehler beim Abrufen der Filterregeln von AdGuard."
+     _err "Fehler beim Abrufen der Filterregeln von AdGuard. (Zugangsdaten oder URL falsch?)"
      return 1
   fi
-  # Extrahiere das Array user_rules sauber, falls vorhanden
+  
+  # Extrahiere das Array user_rules sauber
   echo "$_res" | tr -d '\n' | grep -o '"user_rules":\[[^]*]*\]' | sed 's/"user_rules":\[//;s/\]$//' | sed 's/"//g' | tr ',' '\n'
 }
 
