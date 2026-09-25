@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # File: dns_adguard.sh
-# Author: Custom AdGuard Home DNS-01 Hook (Pure Curl Engine)
+# Author: Custom AdGuard Home DNS-01 Hook (Safe Python JSON Parser)
 
 dns_adguard_add() {
   fulldomain=$1
@@ -13,24 +13,36 @@ dns_adguard_add() {
   _rule="||${fulldomain}^\$dnstype=TXT,dnsrewrite=NOERROR;TXT;${txtvalue}"
   _debug "Generierte Filterregel: $_rule"
 
-  # Aktuelle Regeln holen
-  _current_rules=$(_adguard_get_rules)
-  [ $? -ne 0 ] && return 1
-  
-  # Prüfen, ob die exakte Regel schon existiert
-  if echo "$_current_rules" | grep -F -q "$_rule"; then
-    _info "Regel existiert bereits in AdGuard. Überspringe Hinzufügen."
-    return 0
+  # Aktuelles JSON-Statusobjekt direkt von der API holen
+  _json_status=$(curl -sS --connect-timeout 20 -m 30 -u "$ADGUARD_AUTH" "$ADGUARD_URL/control/filtering/status")
+  if [ $? -ne 0 ] || [ -z "$_json_status" ]; then
+     _err "Fehler beim Abrufen der Filterregeln von AdGuard."
+     return 1
   fi
 
-  # Neue Regel sauber an das bestehende Regelwerk anhängen
-  if [ -z "$_current_rules" ]; then
-    _payload="$_rule"
-  else
-    _payload="$_current_rules"$'\n'"$_rule"
+  # Python fügt die Regel sicher in das JSON-Array ein, falls sie noch nicht existiert
+  _json_payload=$(python3 -c '
+import sys, json
+try:
+    data = json.loads(sys.argv[1])
+    rule = sys.argv[2]
+    # Falls das Feld fehlt, initialisieren
+    if "user_rules" not in data or data["user_rules"] is None:
+        data["user_rules"] = []
+    if rule not in data["user_rules"]:
+        data["user_rules"].append(rule)
+    # Nur das benötigte Objekt für set_rules zurückgeben
+    print(json.dumps({"user_rules": data["user_rules"]}))
+except Exception as e:
+    sys.exit(1)
+' "$_json_status" "$_rule")
+
+  if [ $? -ne 0 ] || [ -z "$_json_payload" ]; then
+    _err "Fehler bei der JSON-Verarbeitung während des Hinzufügens."
+    return 1
   fi
 
-  _adguard_save_rules "$_payload"
+  _adguard_save_rules "$_json_payload"
 }
 
 dns_adguard_rm() {
@@ -41,15 +53,32 @@ dns_adguard_rm() {
   _adguard_init || return 1
 
   _rule="||${fulldomain}^\$dnstype=TXT,dnsrewrite=NOERROR;TXT;${txtvalue}"
-  
-  # Aktuelle Regeln holen
-  _current_rules=$(_adguard_get_rules)
-  [ $? -ne 0 ] && return 1
-  
-  # Nur die spezifische Zeile dieser Domain/Challenge herausfiltern
-  _payload=$(echo "$_current_rules" | grep -F -v "$_rule")
 
-  _adguard_save_rules "$_payload"
+  _json_status=$(curl -sS --connect-timeout 20 -m 30 -u "$ADGUARD_AUTH" "$ADGUARD_URL/control/filtering/status")
+  if [ $? -ne 0 ] || [ -z "$_json_status" ]; then
+     _err "Fehler beim Abrufen der Filterregeln von AdGuard."
+     return 1
+  fi
+
+  # Python entfernt gezielt nur diese eine Regel aus dem Array
+  _json_payload=$(python3 -c '
+import sys, json
+try:
+    data = json.loads(sys.argv[1])
+    rule = sys.argv[2]
+    if "user_rules" in data and data["user_rules"]:
+        data["user_rules"] = [r for r in data["user_rules"] if r != rule]
+    print(json.dumps({"user_rules": data.get("user_rules", [])}))
+except Exception as e:
+    sys.exit(1)
+' "$_json_status" "$_rule")
+
+  if [ $? -ne 0 ] || [ -z "$_json_payload" ]; then
+    _err "Fehler bei der JSON-Verarbeitung während des Entfernens."
+    return 1
+  fi
+
+  _adguard_save_rules "$_json_payload"
 }
 
 ######################################################################
@@ -79,40 +108,14 @@ _adguard_init() {
   fi
 }
 
-_adguard_get_rules() {
-  # Nativer Curl-Aufruf ohne acme.sh-Interne Abhängigkeiten
-  _res=$(curl -sS --connect-timeout 20 -m 30 -u "$ADGUARD_AUTH" "$ADGUARD_URL/control/filtering/status")
-  
-  if [ $? -ne 0 ] || [ -z "$_res" ]; then
-     _err "Fehler beim Abrufen der Filterregeln von AdGuard via nativem curl."
-     return 1
-  fi
-  
-  # Extrahiere das Array user_rules sauber
-  echo "$_res" | tr -d '\n' | grep -o '"user_rules":\[[^]*]*\]' | sed 's/"user_rules":\[//;s/\]$//' | sed 's/"//g' | tr ',' '\n'
-}
-
 _adguard_save_rules() {
-  _rules_content=$1
+  _payload=$1
 
-  _json_rules=""
-  while IFS= read -r line; do
-    [ -z "$line" ] && continue
-    _escaped=$(echo "$line" | sed 's/"/\\"/g')
-    if [ -z "$_json_rules" ]; then
-      _json_rules="\"$_escaped\""
-    else
-      _json_rules="$_json_rules,\"$_escaped\""
-    fi
-  done <<< "$_rules_content"
-
-  _json_payload="{\"user_rules\":[$_json_rules]}"
-
-  # Nativer Curl-Aufruf für den POST-Request
+  # Senden des validierten JSON-Strings an AdGuard
   _res=$(curl -sS --connect-timeout 20 -m 30 -u "$ADGUARD_AUTH" \
     -X POST \
     -H "Content-Type: application/json" \
-    -d "$_json_payload" \
+    -d "$_payload" \
     "$ADGUARD_URL/control/filtering/set_rules")
   
   if [ $? -eq 0 ]; then
