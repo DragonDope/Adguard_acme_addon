@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # File: dns_adguard.sh
-# Author: Custom AdGuard Home DNS-01 Hook for acme.sh (Timeout & SAN Fixed)
+# Author: Custom AdGuard Home DNS-01 Hook (Pure Curl Engine)
 
 dns_adguard_add() {
   fulldomain=$1
@@ -57,14 +57,6 @@ dns_adguard_rm() {
 ######################################################################
 
 _adguard_init() {
-  # Standard-Timeouts für acme.sh HTTP-Funktionen setzen, um curl-Fehler zu vermeiden
-  if [ -z "$HTTP_CONNECT_TIMEOUT" ]; then
-    HTTP_CONNECT_TIMEOUT=20
-  fi
-  if [ -z "$HTTP_TIMEOUT" ]; then
-    HTTP_TIMEOUT=30
-  fi
-
   if [ -n "$ADGUARD_AUTH" ]; then
     _saveaccountconf ADGUARD_AUTH "$ADGUARD_AUTH"
   else
@@ -85,17 +77,14 @@ _adguard_init() {
     _err "Bitte definiere die Umgebungsvariable ADGUARD_AUTH='user:passwort'"
     return 1
   fi
-
-  _encoded_auth=$(printf "%s" "$ADGUARD_AUTH" | _base64)
-  _adguard_headers="Authorization: Basic $_encoded_auth"
 }
 
 _adguard_get_rules() {
-  # API-Abruf mit direkter Übergabe an _get
-  _res=$(_get "$ADGUARD_URL/control/filtering/status" "" "$_adguard_headers")
+  # Nativer Curl-Aufruf ohne acme.sh-Interne Abhängigkeiten
+  _res=$(curl -sS --connect-timeout 20 -m 30 -u "$ADGUARD_AUTH" "$ADGUARD_URL/control/filtering/status")
   
   if [ $? -ne 0 ] || [ -z "$_res" ]; then
-     _err "Fehler beim Abrufen der Filterregeln von AdGuard. (Zugangsdaten oder URL falsch?)"
+     _err "Fehler beim Abrufen der Filterregeln von AdGuard via nativem curl."
      return 1
   fi
   
@@ -119,7 +108,12 @@ _adguard_save_rules() {
 
   _json_payload="{\"user_rules\":[$_json_rules]}"
 
-  _res=$(_post "$_json_payload" "$ADGUARD_URL/control/filtering/set_rules" "" "POST" "application/json" "$_adguard_headers")
+  # Nativer Curl-Aufruf für den POST-Request
+  _res=$(curl -sS --connect-timeout 20 -m 30 -u "$ADGUARD_AUTH" \
+    -X POST \
+    -H "Content-Type: application/json" \
+    -d "$_json_payload" \
+    "$ADGUARD_URL/control/filtering/set_rules")
   
   if [ $? -eq 0 ]; then
     _info "AdGuard Filterregeln erfolgreich aktualisiert."
