@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # File: dns_adguard.sh
-# Author: Custom AdGuard Home DNS-01 Hook (Safe Python JSON Parser)
+# Author: Custom AdGuard Home DNS-01 Hook (API Payload Fixed)
 
 dns_adguard_add() {
   fulldomain=$1
@@ -13,26 +13,26 @@ dns_adguard_add() {
   _rule="||${fulldomain}^\$dnstype=TXT,dnsrewrite=NOERROR;TXT;${txtvalue}"
   _debug "Generierte Filterregel: $_rule"
 
-  # Aktuelles JSON-Statusobjekt direkt von der API holen
   _json_status=$(curl -sS --connect-timeout 20 -m 30 -u "$ADGUARD_AUTH" "$ADGUARD_URL/control/filtering/status")
   if [ $? -ne 0 ] || [ -z "$_json_status" ]; then
      _err "Fehler beim Abrufen der Filterregeln von AdGuard."
      return 1
   fi
 
-  # Python fügt die Regel sicher in das JSON-Array ein, falls sie noch nicht existiert
+  # Python liest "user_rules" aus, fügt das Token hinzu und schreibt es in das von der API erwartete "rules"-Feld
   _json_payload=$(python3 -c '
 import sys, json
 try:
     data = json.loads(sys.argv[1])
     rule = sys.argv[2]
-    # Falls das Feld fehlt, initialisieren
-    if "user_rules" not in data or data["user_rules"] is None:
-        data["user_rules"] = []
-    if rule not in data["user_rules"]:
-        data["user_rules"].append(rule)
-    # Nur das benötigte Objekt für set_rules zurückgeben
-    print(json.dumps({"user_rules": data["user_rules"]}))
+    # Auslesen aus "user_rules"
+    current_rules = data.get("user_rules", [])
+    if current_rules is None:
+        current_rules = []
+    if rule not in current_rules:
+        current_rules.append(rule)
+    # Senden als "rules" (Wichtig fuer die set_rules API!)
+    print(json.dumps({"rules": current_rules}))
 except Exception as e:
     sys.exit(1)
 ' "$_json_status" "$_rule")
@@ -60,15 +60,16 @@ dns_adguard_rm() {
      return 1
   fi
 
-  # Python entfernt gezielt nur diese eine Regel aus dem Array
+  # Python filtert den Eintrag heraus und mappt das Ergebnis wieder auf das "rules"-Feld
   _json_payload=$(python3 -c '
 import sys, json
 try:
     data = json.loads(sys.argv[1])
     rule = sys.argv[2]
-    if "user_rules" in data and data["user_rules"]:
-        data["user_rules"] = [r for r in data["user_rules"] if r != rule]
-    print(json.dumps({"user_rules": data.get("user_rules", [])}))
+    current_rules = data.get("user_rules", [])
+    if current_rules:
+        current_rules = [r for r in current_rules if r != rule]
+    print(json.dumps({"rules": current_rules}))
 except Exception as e:
     sys.exit(1)
 ' "$_json_status" "$_rule")
@@ -111,7 +112,6 @@ _adguard_init() {
 _adguard_save_rules() {
   _payload=$1
 
-  # Senden des validierten JSON-Strings an AdGuard
   _res=$(curl -sS --connect-timeout 20 -m 30 -u "$ADGUARD_AUTH" \
     -X POST \
     -H "Content-Type: application/json" \
