@@ -1,29 +1,28 @@
 #!/usr/bin/env bash
 
 # File: dns_adguard.sh
-# Author: Custom AdGuard Home DNS-01 Hook for acme.sh
-#
-# ADGUARD_AUTH="user:password"
-# ADGUARD_URL="http://127.0.0.1:80" (Optional, Standard ist http://localhost:80)
+# Author: Custom AdGuard Home DNS-01 Hook for acme.sh (SAN / Multi-Domain Ready)
 
 dns_adguard_add() {
   fulldomain=$1
   txtvalue=$2
 
   _info "Nutze AdGuard Home API, um TXT-Record für $fulldomain hinzuzufügen"
-
-  # Konfiguration einlesen / validieren
   _adguard_init || return 1
 
-  # AdGuard-spezifische Filterregel generieren
-  # Format: ||domain^$dnstype=TXT,dnsrewrite=NOERROR;TXT;value
   _rule="||${fulldomain}^\$dnstype=TXT,dnsrewrite=NOERROR;TXT;${txtvalue}"
   _debug "Generierte Filterregel: $_rule"
 
-  # Aktuelle Regeln holen, um die neue Regel anzuhängen
+  # Aktuelle Regeln holen
   _current_rules=$(_adguard_get_rules)
   
-  # Neue Regel formen (mit Zeilenumbruch getrennt)
+  # Prüfen, ob die exakte Regel schon existiert (Verhindert Duplikate bei SANs)
+  if echo "$_current_rules" | grep -F -q "$_rule"; then
+    _info "Regel existiert bereits in AdGuard. Überspringe Hinzufügen."
+    return 0
+  fi
+
+  # Neue Regel sauber an das bestehende Regelwerk anhängen
   if [ -z "$_current_rules" ]; then
     _payload="$_rule"
   else
@@ -45,7 +44,8 @@ dns_adguard_rm() {
   # Aktuelle Regeln holen
   _current_rules=$(_adguard_get_rules)
   
-  # Die spezifische Challenge-Regel herausfiltern
+  # Nur die spezifische Zeile dieser Domain/Challenge herausfiltern
+  # Andere aktive Challenges (von weiteren SAN-Domains) bleiben erhalten!
   _payload=$(echo "$_current_rules" | grep -F -v "$_rule")
 
   _adguard_save_rules "$_payload"
@@ -56,7 +56,6 @@ dns_adguard_rm() {
 ######################################################################
 
 _adguard_init() {
-  # Zugangsdaten aus Umgebungsvariablen sichern, falls vorhanden (acme.sh speichert diese automatisch)
   if [ -n "$ADGUARD_AUTH" ]; then
     _saveaccountconf ADGUARD_AUTH "$ADGUARD_AUTH"
   else
@@ -69,7 +68,6 @@ _adguard_init() {
     ADGUARD_URL=$(_readaccountconf ADGUARD_URL)
   fi
 
-  # Fallback falls URL nicht definiert
   if [ -z "$ADGUARD_URL" ]; then
     ADGUARD_URL="http://localhost:80"
   fi
@@ -79,31 +77,26 @@ _adguard_init() {
     return 1
   fi
 
-  # Header für Basic-Auth vorbereiten (In acme.sh ist _base64 verfügbar)
   _encoded_auth=$(printf "%s" "$ADGUARD_AUTH" | _base64)
   _adguard_headers="Authorization: Basic $_encoded_auth"
 }
 
 _adguard_get_rules() {
-  # Ruft die aktuellen benutzerdefinierten Filterregeln ab
   _res=$(_with_retry _get "$ADGUARD_URL/control/filtering/status" "" "$_adguard_headers")
   if [ $? -ne 0 ] || [ -z "$_res" ]; then
      _err "Fehler beim Abrufen der Filterregeln von AdGuard."
      return 1
   fi
-  # Extrahiere das Array user_rules aus dem JSON
+  # Extrahiere das Array user_rules sauber, falls vorhanden
   echo "$_res" | tr -d '\n' | grep -o '"user_rules":\[[^]*]*\]' | sed 's/"user_rules":\[//;s/\]$//' | sed 's/"//g' | tr ',' '\n'
 }
 
 _adguard_save_rules() {
   _rules_content=$1
 
-  # JSON Payload für das Setzen der Regeln aufbereiten
-  # Jede Zeile muss korrekt als JSON-String maskiert im Array landen
   _json_rules=""
   while IFS= read -r line; do
     [ -z "$line" ] && continue
-    # Anführungszeichen maskieren
     _escaped=$(echo "$line" | sed 's/"/\\"/g')
     if [ -z "$_json_rules" ]; then
       _json_rules="\"$_escaped\""
@@ -114,7 +107,6 @@ _adguard_save_rules() {
 
   _json_payload="{\"user_rules\":[$_json_rules]}"
 
-  # API-Aufruf zum Aktualisieren der Regeln
   _res=$(_post "$_json_payload" "$ADGUARD_URL/control/filtering/set_rules" "" "POST" "application/json" "$_adguard_headers")
   
   if [ $? -eq 0 ]; then
