@@ -10,7 +10,7 @@ Da AdGuard Home über keine native API für isolierte TXT-Records verfügt, nutz
 1. Es liest bestehende benutzerdefinierte Filterregeln via JSON aus.
 2. Es fügt die ACME-Challenge im AdGuard-DNS-Rewrite-Format hinzu `||_acme-challenge.domain.internal^$dnstype=TXT,dnsrewrite=NOERROR;TXT;<token>`).
 4. Bestehende manuelle Filterregeln werden **nicht** überschrieben oder gelöscht.
-5. Es erzwingt einen sofortigen Cache-Refresh in AdGuard Home, damit auch Multi-Domain-Zertifikate (SAN) ohne DNS-Verzögerung validiert werden.
+~~5. Es erzwingt einen sofortigen Cache-Refresh in AdGuard Home, damit auch Multi-Domain-Zertifikate (SAN) ohne DNS-Verzögerung validiert werden.~~
 6. Nach erfolgreichem Abschluss werden die Challenges rückstandslos entfernt.
 
 ## 🛠 Voraussetzungen
@@ -49,7 +49,7 @@ sudo -u acme -H bash -c " \
   /var/lib/acme/.acme.sh/acme.sh --issue --dns dns_adguard \
     -d 'url.internal' \
     -d 'urlmore.internal' \
-    --server 'https://ca.internal' \
+    --server 'https://ca.internal:8443/acme/acme/directory' \
     --dnssleep 120"
 ```
 
