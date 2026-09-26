@@ -59,7 +59,7 @@ Nachdem das Zertifikat erfolgreich ausgestellt wurde, muss es an den Zielort kop
 Hier am Beispiel für einen **Apache2** Webserver:
 
 ```bash
-sudo -u acme -H /var/lib/acme/.acme.sh/acme.sh --install-cert -d testskript.internal \
+sudo -u acme -H /var/lib/acme/.acme.sh/acme.sh --install-cert -d url.internal \
   --cert-file /etc/apache2/ssl/url.cert.pem \
   --key-file /etc/apache2/ssl/url.key.pem \
   --fullchain-file /etc/apache2/ssl/url.fullchain.pem \
