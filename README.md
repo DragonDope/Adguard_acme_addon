@@ -1,5 +1,3 @@
-# Adguard_acme_addon
-
 # acme.sh DNS API Addon für AdGuard Home
 
 Dieses Addon für [acme.sh](https://github.com) ermöglicht die automatisierte Zertifikatsausstellung via **DNS-01 Challenge** über eine **AdGuard Home** Instanz. 
