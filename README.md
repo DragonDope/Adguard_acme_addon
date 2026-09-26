@@ -24,12 +24,13 @@ Da AdGuard Home über keine native API für isolierte TXT-Records verfügt, nutz
 
 Kopiere das Skript in das `dnsapi`-Verzeichnis deiner `acme.sh`-Installation (standardmäßig unter `~/.acme.sh/dnsapi/`).
 
+#### Pfad ggf. an deine acme.sh Umgebung anpassen
 ```bash
-# Pfad ggf. an deine acme.sh Umgebung anpassen
-sudo -u acme wget -O /var/lib/acme/.acme.sh/dnsapi/dns_adguard.sh https://github.com/DragonDope/Adguard_acme_addon/blob/master/dns_adguard.sh
+sudo -u acme wget -O /var/lib/acme/.acme.sh/dnsapi/dns_adguard.sh https://raw.githubusercontent.com/DragonDope/Adguard_acme_addon/refs/heads/master/dns_adguard.sh
 ```
+
+#### Skript ausführbar machen
 ```bash
-# Skript ausführbar machen
 sudo chmod +x /var/lib/acme/.acme.sh/dnsapi/dns_adguard.sh
 ```
 
