@@ -4,16 +4,16 @@
 
 Dieses Addon für [acme.sh](https://github.com) ermöglicht die automatisierte Zertifikatsausstellung via **DNS-01 Challenge** über eine **AdGuard Home** Instanz. 
 
-Es eignet sich perfekt für Umgebungen im lokalen Netzwerk (LAN), in denen Wildcard- oder Multi-Domain-Zertifikate (SAN) über eine interne Zertifizierungsstelle (z. B. Step-CA, Smallstep, Active Directory Certificate Services) oder öffentliche CAs ausgestellt werden sollen, ohne Ports nach außen öffnen zu müssen.
+Es eignet sich perfekt für Umgebungen im lokalen Netzwerk (LAN), in denen Wildcard- oder Multi-Domain-Zertifikate (SAN) über eine interne Zertifizierungsstelle (z. B. Step-CA, Smallstep, Active Directory Certificate Services) ausgestellt werden sollen, falls eine ACME Challenge http-01 über Ports 80 nicht funktioniert.
 
 ## 🚀 Funktionsweise
 
 Da AdGuard Home über keine native API für isolierte TXT-Records verfügt, nutzt dieses Skript die offizielle Filter-API (`/control/filtering/set_rules`). 
 1. Es liest bestehende benutzerdefinierte Filterregeln via JSON aus.
-2. Es fügt die ACME-Challenge im AdGuard-DNS-Rewrite-Format hinzu (`||_acme-challenge.domain.internal^$dnstype=TXT,dnsrewrite=NOERROR;TXT;<token>`).
-3. Bestehende manuelle Filterregeln werden **nicht** überschrieben oder gelöscht.
-4. Es erzwingt einen sofortigen Cache-Refresh in AdGuard Home, damit auch Multi-Domain-Zertifikate (SAN) ohne DNS-Verzögerung validiert werden.
-5. Nach erfolgreichem Abschluss werden die Challenges rückstandslos entfernt.
+2. Es fügt die ACME-Challenge im AdGuard-DNS-Rewrite-Format hinzu `||_acme-challenge.domain.internal^$dnstype=TXT,dnsrewrite=NOERROR;TXT;<token>`).
+4. Bestehende manuelle Filterregeln werden **nicht** überschrieben oder gelöscht.
+5. Es erzwingt einen sofortigen Cache-Refresh in AdGuard Home, damit auch Multi-Domain-Zertifikate (SAN) ohne DNS-Verzögerung validiert werden.
+6. Nach erfolgreichem Abschluss werden die Challenges rückstandslos entfernt.
 
 ## 🛠 Voraussetzungen
 
@@ -24,12 +24,13 @@ Da AdGuard Home über keine native API für isolierte TXT-Records verfügt, nutz
 
 ## 📦 Installation des Addons
 
-Klopfe das Skript in das `dnsapi`-Verzeichnis deiner `acme.sh`-Installation (standardmäßig unter `~/.acme.sh/dnsapi/`).
+Kopiere das Skript in das `dnsapi`-Verzeichnis deiner `acme.sh`-Installation (standardmäßig unter `~/.acme.sh/dnsapi/`).
 
 ```bash
 # Pfad ggf. an deine acme.sh Umgebung anpassen
-sudo -u acme wget -O /var/lib/acme/.acme.sh/dnsapi/dns_adguard.sh https://githubusercontent.com
-
+sudo -u acme wget -O /var/lib/acme/.acme.sh/dnsapi/dns_adguard.sh https://github.com/DragonDope/Adguard_acme_addon/blob/master/dns_adguard.sh
+```
+```bash
 # Skript ausführbar machen
 sudo chmod +x /var/lib/acme/.acme.sh/dnsapi/dns_adguard.sh
 ```
